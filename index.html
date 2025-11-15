@@ -208,6 +208,8 @@
         // C4 だけ gain を少し持ち上げて補正
        // 16音定義（Cメジャー 2オクターブ＋D6）
 // 低音ほど gain を大きく、高音ほど小さくしてバランスを取る
+// 16音定義（Cメジャー 2オクターブ＋D6）
+// 低音ほど大きく / 高音ほどかなり絞る
 const notes = [
     { key: '1', note: 'C4', freq: 261.63, gain: 1.8 },
     { key: '2', note: 'D4', freq: 293.66, gain: 1.7 },
@@ -220,15 +222,17 @@ const notes = [
     { key: 'R', note: 'C5', freq: 523.25, gain: 1.1 },
 
     { key: 'A', note: 'D5', freq: 587.33, gain: 1.0 },
-    { key: 'S', note: 'E5', freq: 659.25, gain: 0.95 },
-    { key: 'D', note: 'F5', freq: 698.46, gain: 0.9 },
-    { key: 'F', note: 'G5', freq: 783.99, gain: 0.85 },
+    { key: 'S', note: 'E5', freq: 659.25, gain: 0.9 },
+    { key: 'D', note: 'F5', freq: 698.46, gain: 0.8 },
 
-    { key: 'Z', note: 'A5', freq: 880.00,  gain: 0.8 },
-    { key: 'X', note: 'B5', freq: 987.77,  gain: 0.75 },
-    { key: 'C', note: 'C6', freq: 1046.50, gain: 0.7 },
-    { key: 'V', note: 'D6', freq: 1174.66, gain: 0.65 }
+    // ここから問題の高音域をガッツリ絞る
+    { key: 'F', note: 'G5', freq: 783.99, gain: 0.6 },
+    { key: 'Z', note: 'A5', freq: 880.00,  gain: 0.5 },
+    { key: 'X', note: 'B5', freq: 987.77,  gain: 0.45 },
+    { key: 'C', note: 'C6', freq: 1046.50, gain: 0.40 },
+    { key: 'V', note: 'D6', freq: 1174.66, gain: 0.35 }
 ];
+
 
 
         // キー→インデックスのマップ
@@ -280,9 +284,8 @@ const notes = [
             gainNode.connect(mainGain);
             
             const now = audioContext.currentTime;
-          const baseVoiceGain = 0.7; // 全体の標準を少し下げる
+const baseVoiceGain = 0.7; // 全体の標準を少し下げる
 let targetGain = baseVoiceGain * gainFactor;
-// 念のため上限をクリップ
 if (targetGain > 1.0) targetGain = 1.0;
 
             
@@ -522,4 +525,5 @@ if (targetGain > 1.0) targetGain = 1.0;
     </script>
 </body>
 </html>
+
 
