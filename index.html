@@ -1,54 +1,482 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <title>Magic Flute</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>魔法の笛 - Magic Flute</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 600px;
+            height: 100vh;
+            position: relative;
+            padding: 20px;
+        }
+
+        /* 星型ボタン（メイン演奏用） */
+        .star-buttons {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            width: 280px;
+        }
+
+        .star-button {
+            width: 60px;
+            height: 60px;
+            background: radial-gradient(circle, #ffeb3b 0%, #ffc107 100%);
+            clip-path: polygon(
+                50% 0%,
+                61% 35%,
+                98% 35%,
+                68% 57%,
+                79% 91%,
+                50% 70%,
+                21% 91%,
+                32% 57%,
+                2% 35%,
+                39% 35%
+            );
+            cursor: pointer;
+            transition: transform 0.1s, filter 0.1s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            color: rgba(0, 0, 0, 0.75);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            line-height: 1.2;
+            touch-action: none; /* 星ドラッグでスクロールさせない */
+        }
+
+        .star-button span.key-label {
+            font-size: 10px;
+            opacity: 0.8;
+            margin-top: 2px;
+        }
+
+        .star-button.active {
+            transform: scale(1.2) rotate(36deg);
+            filter: brightness(1.3);
+            box-shadow: 0 0 20px rgba(255, 235, 59, 1);
+        }
+        
+        /* 太陽ボタン（音量コントロール） */
+        .sun-button {
+            position: absolute;
+            right: 30px;
+            top: 30px;
+            width: 80px;
+            height: 80px;
+            background: radial-gradient(circle, #ffd700 0%, #ffa500 100%);
+            border-radius: 50%;
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.5), 0 4px 15px rgba(0, 0, 0, 0.3);
+            cursor: grab;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            touch-action: none;
+            position: relative;
+        }
+
+        .sun-button::before {
+            content: '☀';
+            filter: drop-shadow(2px 2px 3px rgba(0, 0, 0, 0.3));
+        }
+
+        .sun-button.dragging {
+            cursor: grabbing;
+            transform: scale(1.1);
+        }
+
+        .volume-indicator {
+            position: absolute;
+            right: 120px;
+            top: 50px;
+            font-size: 14px;
+            color: white;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 5px 10px;
+            border-radius: 20px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .volume-indicator.visible {
+            opacity: 1;
+        }
+
+        /* ヘルプテキスト */
+        .help-text {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 11px;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 5px 15px;
+            border-radius: 20px;
+        }
+
+        /* レスポンシブ対応 */
+        @media (max-width: 480px) {
+            .star-buttons {
+                width: 240px;
+                gap: 10px;
+            }
+            
+            .star-button {
+                width: 52px;
+                height: 52px;
+                font-size: 11px;
+            }
+            
+            .sun-button {
+                width: 70px;
+                height: 70px;
+                right: 20px;
+                top: 20px;
+            }
+        }
+    </style>
 </head>
 <body>
-  <div class="app">
-    <!-- 右上コントロール -->
-    <div class="top-right-controls">
-      <div id="sunButton" class="sun control-btn" title="ボリューム（ドラッグで調整）"></div>
-      <div id="moonButton" class="moon control-btn" title="サステイン（押している間ON）"></div>
+    <div class="app-container">
+        <!-- 太陽ボタン（音量コントロール） -->
+        <div class="sun-button" id="sunButton"></div>
+        <div class="volume-indicator" id="volumeIndicator">Volume: 50%</div>
+
+        <!-- 星型ボタン（16音・ドラッグでピッチ変更） -->
+        <div class="star-buttons" id="starButtons"></div>
+
+        <!-- ヘルプテキスト -->
+        <div class="help-text">
+            星16音（C4〜D6）: タップで演奏 / 上下ドラッグでピッチ変化 |
+            キー: 1–4, QWER, ASDF, ZXCV | 太陽:音量
+        </div>
     </div>
 
-    <!-- 中央：笛の指穴（魔法陣ボタン） -->
-    <div class="center-flute">
-      <div class="magic-key" data-note-type="melody" data-note-index="0" data-key="a"></div>
-      <div class="magic-key" data-note-type="melody" data-note-index="1" data-key="s"></div>
-      <div class="magic-key" data-note-type="melody" data-note-index="2" data-key="d"></div>
-      <div class="magic-key" data-note-type="melody" data-note-index="3" data-key="f"></div>
-      <div class="magic-key" data-note-type="melody" data-note-index="4" data-key="j"></div>
-      <div class="magic-key" data-note-type="melody" data-note-index="5" data-key="k"></div>
-      <div class="magic-key" data-note-type="melody" data-note-index="6" data-key="l"></div>
-    </div>
+    <script>
+        // Web Audio API セットアップ
+        let audioContext;
+        let mainGain;
+        let isInitialized = false;
+        
+        // 発音管理（ドラッグで周波数変更のため保持）
+        let activeVoices = new Map(); // noteId -> {oscillator, gainNode}
+        let nextNoteId = 0;
+        
+        // 音量管理
+        let currentVolume = 0.5;
+        
+        // 16音の定義（Cメジャー 2オクターブ＋D6）
+        // キーボード配置: 1 2 3 4 / Q W E R / A S D F / Z X C V
+        const notes = [
+            { key: '1', note: 'C4', freq: 261.63 },
+            { key: '2', note: 'D4', freq: 293.66 },
+            { key: '3', note: 'E4', freq: 329.63 },
+            { key: '4', note: 'F4', freq: 349.23 },
 
-    <!-- 左下：星ボタン（和音用） -->
-    <div class="bottom-left-stars">
-      <div class="star-row">
-        <div class="star-key" data-note-type="chord" data-note-index="0" data-key="z"></div>
-        <div class="star-key" data-note-type="chord" data-note-index="1" data-key="x"></div>
-        <div class="star-key" data-note-type="chord" data-note-index="2" data-key="c"></div>
-        <div class="star-key" data-note-type="chord" data-note-index="3" data-key="v"></div>
-      </div>
-      <div class="star-row">
-        <div class="star-key" data-note-type="chord" data-note-index="4" data-key="b"></div>
-        <div class="star-key" data-note-type="chord" data-note-index="5" data-key="n"></div>
-        <div class="star-key" data-note-type="chord" data-note-index="6" data-key="m"></div>
-        <div class="star-key" data-note-type="chord" data-note-index="7" data-key=","></div>
-      </div>
-    </div>
+            { key: 'Q', note: 'G4', freq: 392.00 },
+            { key: 'W', note: 'A4', freq: 440.00 },
+            { key: 'E', note: 'B4', freq: 493.88 },
+            { key: 'R', note: 'C5', freq: 523.25 },
 
-    <!-- 現在の音量表示 -->
-    <div class="info-panel">
-      <div>Volume: <span id="volumeDisplay">70%</span></div>
-      <div>Keys (melody): A S D F J K L</div>
-      <div>Keys (chord): Z X C V B N M ,</div>
-    </div>
-  </div>
+            { key: 'A', note: 'D5', freq: 587.33 },
+            { key: 'S', note: 'E5', freq: 659.25 },
+            { key: 'D', note: 'F5', freq: 698.46 },
+            { key: 'F', note: 'G5', freq: 783.99 },
 
-  <script src="main.js"></script>
+            { key: 'Z', note: 'A5', freq: 880.00 },
+            { key: 'X', note: 'B5', freq: 987.77 },
+            { key: 'C', note: 'C6', freq: 1046.50 },
+            { key: 'V', note: 'D6', freq: 1174.66 }
+        ];
+
+        // キー→インデックスのマップ（小文字で統一）
+        const keyIndexMap = {};
+        notes.forEach((n, idx) => {
+            keyIndexMap[n.key.toLowerCase()] = idx;
+        });
+
+        // オーディオコンテキスト初期化
+        function initAudio() {
+            if (isInitialized) return;
+            
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            mainGain = audioContext.createGain();
+            mainGain.connect(audioContext.destination);
+            mainGain.gain.value = currentVolume;
+            
+            isInitialized = true;
+        }
+
+        // 音を鳴らす
+        function noteOn(frequency, idTag) {
+            if (!isInitialized) initAudio();
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.frequency.value = frequency;
+            oscillator.type = 'sine';
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(mainGain);
+            
+            const now = audioContext.currentTime;
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(1.0, now + 0.03);
+            
+            oscillator.start(now);
+            
+            const noteId = `${idTag}_${nextNoteId++}`;
+            activeVoices.set(noteId, {
+                oscillator: oscillator,
+                gainNode: gainNode
+            });
+            
+            return noteId;
+        }
+
+        // 音を止める
+        function noteOff(noteId) {
+            if (!noteId || !activeVoices.has(noteId)) return;
+            
+            const voice = activeVoices.get(noteId);
+            const now = audioContext.currentTime;
+            
+            voice.gainNode.gain.cancelScheduledValues(now);
+            voice.gainNode.gain.setValueAtTime(voice.gainNode.gain.value, now);
+            voice.gainNode.gain.linearRampToValueAtTime(0, now + 0.2);
+            
+            voice.oscillator.stop(now + 0.25);
+            
+            setTimeout(() => {
+                activeVoices.delete(noteId);
+            }, 250);
+        }
+
+        // UI生成（16個の星ボタン）
+        function createUI() {
+            const starButtonsContainer = document.getElementById('starButtons');
+            
+            notes.forEach((n, index) => {
+                const star = document.createElement('div');
+                star.className = 'star-button';
+                star.dataset.index = index;
+                star.dataset.freq = n.freq;
+                star.dataset.note = n.note;
+                star.dataset.key = n.key;
+                
+                star.innerHTML = `
+                    ${n.note}
+                    <span class="key-label">${n.key}</span>
+                `;
+                
+                starButtonsContainer.appendChild(star);
+            });
+        }
+
+        // イベントリスナー設定
+        function setupEventListeners() {
+            // 星ボタン（タップ＆ドラッグでピッチ変更）
+            const stars = document.querySelectorAll('.star-button');
+            stars.forEach(star => {
+                star.addEventListener('pointerdown', (e) => {
+                    e.preventDefault();
+                    initAudio();
+                    
+                    star.classList.add('active');
+                    
+                    const freq = parseFloat(star.dataset.freq);
+                    const noteId = noteOn(freq, `star_${star.dataset.index}`);
+                    star.dataset.noteId = noteId;
+                    star.dataset.baseFreq = freq;
+                    star.dataset.startY = e.clientY;
+                    
+                    star.setPointerCapture(e.pointerId);
+                });
+                
+                star.addEventListener('pointermove', (e) => {
+                    if (!star.dataset.noteId) return;
+                    e.preventDefault();
+                    
+                    const noteId = star.dataset.noteId;
+                    const voice = activeVoices.get(noteId);
+                    if (!voice) return;
+                    
+                    const baseFreq = parseFloat(star.dataset.baseFreq);
+                    const startY = parseFloat(star.dataset.startY);
+                    const deltaY = startY - e.clientY; // 上に動かすと正
+                    
+                    // 200px 動かすと 1オクターブ変化（2倍 / 1/2倍）
+                    const octaves = deltaY / 200;
+                    const factor = Math.pow(2, octaves);
+                    const newFreq = baseFreq * factor;
+                    
+                    const now = audioContext.currentTime;
+                    voice.oscillator.frequency.setValueAtTime(newFreq, now);
+                });
+                
+                star.addEventListener('pointerup', (e) => {
+                    e.preventDefault();
+                    star.classList.remove('active');
+                    if (star.dataset.noteId) {
+                        noteOff(star.dataset.noteId);
+                        delete star.dataset.noteId;
+                    }
+                });
+                
+                star.addEventListener('pointerleave', (e) => {
+                    star.classList.remove('active');
+                    if (star.dataset.noteId) {
+                        noteOff(star.dataset.noteId);
+                        delete star.dataset.noteId;
+                    }
+                });
+                
+                star.addEventListener('pointercancel', (e) => {
+                    star.classList.remove('active');
+                    if (star.dataset.noteId) {
+                        noteOff(star.dataset.noteId);
+                        delete star.dataset.noteId;
+                    }
+                });
+            });
+            
+            // 太陽ボタン（音量コントロール）
+            const sunButton = document.getElementById('sunButton');
+            const volumeIndicator = document.getElementById('volumeIndicator');
+            let isDragging = false;
+            let startY = 0;
+            let startVolume = currentVolume;
+            
+            sunButton.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                initAudio();
+                
+                isDragging = true;
+                startY = e.clientY;
+                startVolume = currentVolume;
+                sunButton.classList.add('dragging');
+                volumeIndicator.classList.add('visible');
+                sunButton.setPointerCapture(e.pointerId);
+            });
+            
+            sunButton.addEventListener('pointermove', (e) => {
+                if (!isDragging) return;
+                
+                const deltaY = startY - e.clientY; // 上方向が正
+                const volumeChange = deltaY / 200; // 200pxで100%変化
+                currentVolume = Math.max(0, Math.min(1, startVolume + volumeChange));
+                
+                if (mainGain) {
+                    mainGain.gain.value = currentVolume;
+                }
+                
+                volumeIndicator.textContent = `Volume: ${Math.round(currentVolume * 100)}%`;
+            });
+            
+            sunButton.addEventListener('pointerup', (e) => {
+                isDragging = false;
+                sunButton.classList.remove('dragging');
+                setTimeout(() => {
+                    volumeIndicator.classList.remove('visible');
+                }, 1000);
+            });
+            
+            sunButton.addEventListener('pointercancel', (e) => {
+                isDragging = false;
+                sunButton.classList.remove('dragging');
+                volumeIndicator.classList.remove('visible');
+            });
+            
+            // キーボード対応（16音：1 2 3 4 / QWER / ASDF / ZXCV）
+            const pressedKeys = new Map();
+            
+            document.addEventListener('keydown', (e) => {
+                if (e.repeat) return;
+                
+                const key = e.key.toLowerCase();
+                if (!isInitialized) initAudio();
+                
+                if (keyIndexMap.hasOwnProperty(key)) {
+                    e.preventDefault();
+                    const index = keyIndexMap[key];
+                    const noteInfo = notes[index];
+                    const freq = noteInfo.freq;
+                    
+                    const starsList = document.querySelectorAll('.star-button');
+                    const starElement = starsList[index];
+                    if (starElement) {
+                        starElement.classList.add('active');
+                    }
+                    
+                    const noteId = noteOn(freq, `key_${key}`);
+                    pressedKeys.set(key, { element: starElement, noteId: noteId });
+                }
+            });
+            
+            document.addEventListener('keyup', (e) => {
+                const key = e.key.toLowerCase();
+                
+                if (pressedKeys.has(key)) {
+                    const { element, noteId } = pressedKeys.get(key);
+                    if (element) {
+                        element.classList.remove('active');
+                    }
+                    noteOff(noteId);
+                    pressedKeys.delete(key);
+                }
+            });
+        }
+
+        // 初期化
+        document.addEventListener('DOMContentLoaded', () => {
+            createUI();
+            setupEventListeners();
+            
+            // 初回タップで音声を初期化（スマホ対策）
+            document.addEventListener('pointerdown', initAudio, { once: true });
+        });
+
+        // タッチスクロール防止（太陽・星ドラッグ時）
+        document.addEventListener('touchmove', (e) => {
+            if (e.target.closest('.sun-button') || e.target.closest('.star-button')) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+    </script>
 </body>
 </html>
