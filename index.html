@@ -42,7 +42,7 @@
             display: grid;
             grid-template-columns: repeat(4, 1fr);
             gap: 16px;
-            width: 320px; /* 全体幅を少し広げて星を大きく */
+            width: 320px;
         }
 
         .star-button {
@@ -73,7 +73,7 @@
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
             text-align: center;
             line-height: 1.2;
-            touch-action: none; /* 星ドラッグでスクロールさせない */
+            touch-action: none;
         }
 
         .star-button span.key-label {
@@ -148,7 +148,7 @@
             border-radius: 20px;
         }
 
-        /* レスポンシブ対応（画面が狭いスマホ用） */
+        /* レスポンシブ対応 */
         @media (max-width: 480px) {
             .star-buttons {
                 width: 300px;
@@ -197,38 +197,38 @@
         let mainGain;
         let isInitialized = false;
         
-        // 発音管理（ドラッグで周波数変更のため保持）
+        // 発音管理
         let activeVoices = new Map(); // noteId -> {oscillator, gainNode}
         let nextNoteId = 0;
         
         // 音量管理
         let currentVolume = 0.5;
         
-        // 16音の定義（Cメジャー 2オクターブ＋D6）
-        // キーボード配置: 1 2 3 4 / Q W E R / A S D F / Z X C V
+        // 16音定義（Cメジャー 2オクターブ＋D6）
+        // C4 だけ gain を少し持ち上げて補正
         const notes = [
-            { key: '1', note: 'C4', freq: 261.63 },
-            { key: '2', note: 'D4', freq: 293.66 },
-            { key: '3', note: 'E4', freq: 329.63 },
-            { key: '4', note: 'F4', freq: 349.23 },
+            { key: '1', note: 'C4', freq: 261.63, gain: 1.4 },
+            { key: '2', note: 'D4', freq: 293.66, gain: 1.0 },
+            { key: '3', note: 'E4', freq: 329.63, gain: 1.0 },
+            { key: '4', note: 'F4', freq: 349.23, gain: 1.0 },
 
-            { key: 'Q', note: 'G4', freq: 392.00 },
-            { key: 'W', note: 'A4', freq: 440.00 },
-            { key: 'E', note: 'B4', freq: 493.88 },
-            { key: 'R', note: 'C5', freq: 523.25 },
+            { key: 'Q', note: 'G4', freq: 392.00, gain: 1.0 },
+            { key: 'W', note: 'A4', freq: 440.00, gain: 1.0 },
+            { key: 'E', note: 'B4', freq: 493.88, gain: 1.0 },
+            { key: 'R', note: 'C5', freq: 523.25, gain: 1.0 },
 
-            { key: 'A', note: 'D5', freq: 587.33 },
-            { key: 'S', note: 'E5', freq: 659.25 },
-            { key: 'D', note: 'F5', freq: 698.46 },
-            { key: 'F', note: 'G5', freq: 783.99 },
+            { key: 'A', note: 'D5', freq: 587.33, gain: 1.0 },
+            { key: 'S', note: 'E5', freq: 659.25, gain: 1.0 },
+            { key: 'D', note: 'F5', freq: 698.46, gain: 1.0 },
+            { key: 'F', note: 'G5', freq: 783.99, gain: 1.0 },
 
-            { key: 'Z', note: 'A5', freq: 880.00 },
-            { key: 'X', note: 'B5', freq: 987.77 },
-            { key: 'C', note: 'C6', freq: 1046.50 },
-            { key: 'V', note: 'D6', freq: 1174.66 }
+            { key: 'Z', note: 'A5', freq: 880.00,  gain: 1.0 },
+            { key: 'X', note: 'B5', freq: 987.77,  gain: 1.0 },
+            { key: 'C', note: 'C6', freq: 1046.50, gain: 1.0 },
+            { key: 'V', note: 'D6', freq: 1174.66, gain: 1.0 }
         ];
 
-        // キー→インデックスのマップ（小文字で統一）
+        // キー→インデックスのマップ
         const keyIndexMap = {};
         notes.forEach((n, idx) => {
             keyIndexMap[n.key.toLowerCase()] = idx;
@@ -236,7 +236,6 @@
 
         // オーディオコンテキスト初期化
         function initAudio() {
-            // すでに初期化済みで suspend 中なら resume だけ
             if (isInitialized && audioContext) {
                 if (audioContext.state === 'suspended') {
                     audioContext.resume();
@@ -249,7 +248,6 @@
             mainGain.connect(audioContext.destination);
             mainGain.gain.value = currentVolume;
 
-            // 念のため resume を試みる
             if (audioContext.state === 'suspended') {
                 audioContext.resume();
             }
@@ -257,7 +255,6 @@
             isInitialized = true;
         }
 
-        // 安全に resume するヘルパー
         function ensureAudioRunning() {
             if (!audioContext) return;
             if (audioContext.state === 'suspended') {
@@ -265,8 +262,8 @@
             }
         }
 
-        // 音を鳴らす
-        function noteOn(frequency, idTag) {
+        // 音を鳴らす（gainFactor で音量補正）
+        function noteOn(frequency, idTag, gainFactor = 1.0) {
             if (!isInitialized) initAudio();
             ensureAudioRunning();
             
@@ -280,8 +277,11 @@
             gainNode.connect(mainGain);
             
             const now = audioContext.currentTime;
+            const baseVoiceGain = 0.9; // 全体の標準
+            const targetGain = baseVoiceGain * gainFactor;
+            
             gainNode.gain.setValueAtTime(0, now);
-            gainNode.gain.linearRampToValueAtTime(1.0, now + 0.03);
+            gainNode.gain.linearRampToValueAtTime(targetGain, now + 0.03);
             
             oscillator.start(now);
             
@@ -312,7 +312,7 @@
             }, 250);
         }
 
-        // UI生成（16個の星ボタン）
+        // UI生成
         function createUI() {
             const starButtonsContainer = document.getElementById('starButtons');
             
@@ -335,7 +335,7 @@
 
         // イベントリスナー設定
         function setupEventListeners() {
-            // 星ボタン（タップ＆ドラッグでピッチ変更）
+            // 星ボタン
             const stars = document.querySelectorAll('.star-button');
             stars.forEach(star => {
                 star.addEventListener('pointerdown', (e) => {
@@ -345,8 +345,13 @@
                     
                     star.classList.add('active');
                     
-                    const freq = parseFloat(star.dataset.freq);
-                    const noteId = noteOn(freq, `star_${star.dataset.index}`);
+                    const index = parseInt(star.dataset.index, 10);
+                    const info = notes[index];
+                    
+                    const freq = info.freq;
+                    const gainFactor = info.gain ?? 1.0;
+                    
+                    const noteId = noteOn(freq, `star_${index}`, gainFactor);
                     star.dataset.noteId = noteId;
                     star.dataset.baseFreq = freq;
                     star.dataset.startY = e.clientY;
@@ -364,9 +369,8 @@
                     
                     const baseFreq = parseFloat(star.dataset.baseFreq);
                     const startY = parseFloat(star.dataset.startY);
-                    const deltaY = startY - e.clientY; // 上に動かすと正
+                    const deltaY = startY - e.clientY;
                     
-                    // 200px 動かすと 1オクターブ変化（2倍 / 1/2倍）
                     const octaves = deltaY / 200;
                     const factor = Math.pow(2, octaves);
                     const newFreq = baseFreq * factor;
@@ -401,7 +405,7 @@
                 });
             });
             
-            // 太陽ボタン（音量コントロール）
+            // 太陽ボタン
             const sunButton = document.getElementById('sunButton');
             const volumeIndicator = document.getElementById('volumeIndicator');
             let isDragging = false;
@@ -424,8 +428,8 @@
             sunButton.addEventListener('pointermove', (e) => {
                 if (!isDragging) return;
                 
-                const deltaY = startY - e.clientY; // 上方向が正
-                const volumeChange = deltaY / 200; // 200pxで100%変化
+                const deltaY = startY - e.clientY;
+                const volumeChange = deltaY / 200;
                 currentVolume = Math.max(0, Math.min(1, startVolume + volumeChange));
                 
                 if (mainGain) {
@@ -449,7 +453,7 @@
                 volumeIndicator.classList.remove('visible');
             });
             
-            // キーボード対応（16音：1 2 3 4 / QWER / ASDF / ZXCV）
+            // キーボード対応
             const pressedKeys = new Map();
             
             document.addEventListener('keydown', (e) => {
@@ -462,8 +466,10 @@
                 if (keyIndexMap.hasOwnProperty(key)) {
                     e.preventDefault();
                     const index = keyIndexMap[key];
-                    const noteInfo = notes[index];
-                    const freq = noteInfo.freq;
+                    const info = notes[index];
+                    
+                    const freq = info.freq;
+                    const gainFactor = info.gain ?? 1.0;
                     
                     const starsList = document.querySelectorAll('.star-button');
                     const starElement = starsList[index];
@@ -471,7 +477,7 @@
                         starElement.classList.add('active');
                     }
                     
-                    const noteId = noteOn(freq, `key_${key}`);
+                    const noteId = noteOn(freq, `key_${key}`, gainFactor);
                     pressedKeys.set(key, { element: starElement, noteId: noteId });
                 }
             });
@@ -495,14 +501,13 @@
             createUI();
             setupEventListeners();
             
-            // 初回タップで音声を初期化（スマホ対策）
             document.addEventListener('pointerdown', () => {
                 initAudio();
                 ensureAudioRunning();
             }, { once: true });
         });
 
-        // タッチスクロール防止（太陽・星ドラッグ時）
+        // タッチスクロール防止
         document.addEventListener('touchmove', (e) => {
             if (e.target.closest('.sun-button') || e.target.closest('.star-button')) {
                 e.preventDefault();
