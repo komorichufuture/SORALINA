@@ -1,0 +1,204 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: radial-gradient(circle at top, #1f2933 0, #020617 55%);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #e5e7eb;
+}
+
+body {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.app {
+  position: relative;
+  width: min(900px, 100vw);
+  height: min(600px, 100vh);
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: radial-gradient(circle at 20% 0%, #111827 0, #020617 55%);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.8);
+  overflow: hidden;
+}
+
+/* 右上コントロール */
+
+.top-right-controls {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.control-btn {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2px solid rgba(248, 250, 252, 0.5);
+  box-shadow: 0 0 12px rgba(148, 163, 184, 0.7);
+  cursor: pointer;
+  touch-action: none;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.control-btn:active {
+  transform: scale(0.95);
+}
+
+.sun {
+  background: radial-gradient(circle at 30% 20%, #fde68a, #fbbf24, #b45309);
+}
+
+.moon {
+  position: relative;
+  background: radial-gradient(circle at 30% 20%, #e5e7eb, #9ca3af, #020617);
+}
+
+.moon::before {
+  /* 三日月っぽい */
+  content: "";
+  position: absolute;
+  width: 60%;
+  height: 60%;
+  border-radius: 50%;
+  background: #020617;
+  top: 10%;
+  right: 5%;
+}
+
+.moon.sustain-on {
+  box-shadow: 0 0 18px rgba(96, 165, 250, 0.9);
+  border-color: rgba(191, 219, 254, 1);
+}
+
+/* 中央：笛（魔法陣） */
+
+.center-flute {
+  position: absolute;
+  top: 50%;
+  left: 55%;
+  transform: translate(-50%, -50%) rotate(-10deg);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.magic-key {
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 30% 20%, #f9fafb, #e5e7eb 30%, transparent 60%),
+    radial-gradient(circle at 70% 80%, rgba(59, 130, 246, 0.3), rgba(37, 99, 235, 0.8) 50%, rgba(15, 23, 42, 1) 80%);
+  border: 2px solid rgba(191, 219, 254, 0.8);
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.4);
+  cursor: pointer;
+  touch-action: none;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, border-color 0.1s ease;
+}
+
+.magic-key::after {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: 999px;
+  border: 1px dashed rgba(191, 219, 254, 0.7);
+}
+
+.magic-key.active {
+  transform: scale(1.06);
+  box-shadow: 0 0 24px rgba(96, 165, 250, 0.9);
+  border-color: #bfdbfe;
+}
+
+/* 左下：星ボタン */
+
+.bottom-left-stars {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.star-row {
+  display: flex;
+  gap: 10px;
+}
+
+.star-key {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 30% 20%, #fefce8, #facc15 40%, transparent 70%),
+    radial-gradient(circle at 70% 80%, rgba(251, 191, 36, 0.8), rgba(147, 51, 234, 0.9) 60%, rgba(15, 23, 42, 1) 90%);
+  border: 2px solid rgba(254, 240, 138, 0.9);
+  box-shadow: 0 0 14px rgba(251, 191, 36, 0.7);
+  cursor: pointer;
+  touch-action: none;
+  position: relative;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, border-color 0.1s ease;
+}
+
+.star-key::before {
+  /* 星型風のマスクっぽい何か…(簡易) */
+  content: "";
+  position: absolute;
+  inset: 14%;
+  border-radius: 50%;
+  border: 1px solid rgba(254, 249, 195, 0.8);
+}
+
+.star-key.active {
+  transform: scale(1.08) rotate(-3deg);
+  box-shadow: 0 0 20px rgba(250, 204, 21, 1);
+  border-color: #fef08a;
+}
+
+/* 情報表示 */
+
+.info-panel {
+  position: absolute;
+  left: 18px;
+  top: 18px;
+  padding: 8px 12px;
+  background: rgba(15, 23, 42, 0.75);
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  border: 1px solid rgba(55, 65, 81, 0.9);
+}
+
+#volumeDisplay {
+  font-weight: 600;
+}
+
+/* スマホで少し余裕を持たせる */
+
+@media (max-width: 600px) {
+  .magic-key {
+    width: 60px;
+    height: 60px;
+  }
+  .star-key {
+    width: 46px;
+    height: 46px;
+  }
+  .control-btn {
+    width: 56px;
+    height: 56px;
+  }
+}

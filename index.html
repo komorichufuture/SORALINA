@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>Magic Flute</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- 右上コントロール -->
+    <div class="top-right-controls">
+      <div id="sunButton" class="sun control-btn" title="ボリューム（ドラッグで調整）"></div>
+      <div id="moonButton" class="moon control-btn" title="サステイン（押している間ON）"></div>
+    </div>
+
+    <!-- 中央：笛の指穴（魔法陣ボタン） -->
+    <div class="center-flute">
+      <div class="magic-key" data-note-type="melody" data-note-index="0" data-key="a"></div>
+      <div class="magic-key" data-note-type="melody" data-note-index="1" data-key="s"></div>
+      <div class="magic-key" data-note-type="melody" data-note-index="2" data-key="d"></div>
+      <div class="magic-key" data-note-type="melody" data-note-index="3" data-key="f"></div>
+      <div class="magic-key" data-note-type="melody" data-note-index="4" data-key="j"></div>
+      <div class="magic-key" data-note-type="melody" data-note-index="5" data-key="k"></div>
+      <div class="magic-key" data-note-type="melody" data-note-index="6" data-key="l"></div>
+    </div>
+
+    <!-- 左下：星ボタン（和音用） -->
+    <div class="bottom-left-stars">
+      <div class="star-row">
+        <div class="star-key" data-note-type="chord" data-note-index="0" data-key="z"></div>
+        <div class="star-key" data-note-type="chord" data-note-index="1" data-key="x"></div>
+        <div class="star-key" data-note-type="chord" data-note-index="2" data-key="c"></div>
+        <div class="star-key" data-note-type="chord" data-note-index="3" data-key="v"></div>
+      </div>
+      <div class="star-row">
+        <div class="star-key" data-note-type="chord" data-note-index="4" data-key="b"></div>
+        <div class="star-key" data-note-type="chord" data-note-index="5" data-key="n"></div>
+        <div class="star-key" data-note-type="chord" data-note-index="6" data-key="m"></div>
+        <div class="star-key" data-note-type="chord" data-note-index="7" data-key=","></div>
+      </div>
+    </div>
+
+    <!-- 現在の音量表示 -->
+    <div class="info-panel">
+      <div>Volume: <span id="volumeDisplay">70%</span></div>
+      <div>Keys (melody): A S D F J K L</div>
+      <div>Keys (chord): Z X C V B N M ,</div>
+    </div>
+  </div>
+
+  <script src="main.js"></script>
+</body>
+</html>
