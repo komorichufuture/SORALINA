@@ -192,49 +192,41 @@
     </div>
 
     <script>
-        // Web Audio API セットアップ
         let audioContext;
         let mainGain;
         let isInitialized = false;
-        
-        // 発音管理
-        let activeVoices = new Map(); // noteId -> {oscillator, gainNode}
+        let activeVoices = new Map();
         let nextNoteId = 0;
-        
-        // マスター音量（太陽で変化）
         let currentVolume = 0.5;
-        
-        // 16音定義（Cメジャー2オクターブ＋D6）
-        // 低音ほど大きく / 高音ほどかなり絞る
+
+        // ★ここが音量バランスの肝（C4〜B4をかなり持ち上げ、上は絞る）
         const notes = [
-            { key: '1', note: 'C4', freq: 261.63, gain: 1.8 },
-            { key: '2', note: 'D4', freq: 293.66, gain: 1.7 },
-            { key: '3', note: 'E4', freq: 329.63, gain: 1.6 },
-            { key: '4', note: 'F4', freq: 349.23, gain: 1.5 },
+            { key: '1', note: 'C4', freq: 261.63, gain: 3.0 },
+            { key: '2', note: 'D4', freq: 293.66, gain: 2.7 },
+            { key: '3', note: 'E4', freq: 329.63, gain: 2.4 },
+            { key: '4', note: 'F4', freq: 349.23, gain: 2.1 },
 
-            { key: 'Q', note: 'G4', freq: 392.00, gain: 1.3 },
-            { key: 'W', note: 'A4', freq: 440.00, gain: 1.15 },
-            { key: 'E', note: 'B4', freq: 493.88, gain: 1.0 },
-            { key: 'R', note: 'C5', freq: 523.25, gain: 0.9 },
+            { key: 'Q', note: 'G4', freq: 392.00, gain: 1.8 },
+            { key: 'W', note: 'A4', freq: 440.00, gain: 1.6 },
+            { key: 'E', note: 'B4', freq: 493.88, gain: 1.4 },
+            { key: 'R', note: 'C5', freq: 523.25, gain: 1.2 },
 
-            { key: 'A', note: 'D5', freq: 587.33, gain: 0.8 },
-            { key: 'S', note: 'E5', freq: 659.25, gain: 0.7 },
-            { key: 'D', note: 'F5', freq: 698.46, gain: 0.6 },
+            { key: 'A', note: 'D5', freq: 587.33, gain: 1.0 },
+            { key: 'S', note: 'E5', freq: 659.25, gain: 0.9 },
+            { key: 'D', note: 'F5', freq: 698.46, gain: 0.8 },
 
-            { key: 'F', note: 'G5', freq: 783.99, gain: 0.35 },
-            { key: 'Z', note: 'A5', freq: 880.00,  gain: 0.28 },
-            { key: 'X', note: 'B5', freq: 987.77,  gain: 0.22 },
-            { key: 'C', note: 'C6', freq: 1046.50, gain: 0.20 },
-            { key: 'V', note: 'D6', freq: 1174.66, gain: 0.18 }
+            { key: 'F', note: 'G5', freq: 783.99, gain: 0.5 },
+            { key: 'Z', note: 'A5', freq: 880.00,  gain: 0.4 },
+            { key: 'X', note: 'B5', freq: 987.77,  gain: 0.35 },
+            { key: 'C', note: 'C6', freq: 1046.50, gain: 0.32 },
+            { key: 'V', note: 'D6', freq: 1174.66, gain: 0.30 }
         ];
 
-        // キー→インデックスのマップ
         const keyIndexMap = {};
         notes.forEach((n, idx) => {
             keyIndexMap[n.key.toLowerCase()] = idx;
         });
 
-        // オーディオコンテキスト初期化
         function initAudio() {
             if (isInitialized && audioContext) {
                 if (audioContext.state === 'suspended') {
@@ -242,16 +234,13 @@
                 }
                 return;
             }
-            
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             mainGain = audioContext.createGain();
             mainGain.connect(audioContext.destination);
             mainGain.gain.value = currentVolume;
-
             if (audioContext.state === 'suspended') {
                 audioContext.resume();
             }
-            
             isInitialized = true;
         }
 
@@ -262,61 +251,50 @@
             }
         }
 
-        // 音を鳴らす（gainFactor で音量補正）
         function noteOn(frequency, idTag, gainFactor = 1.0) {
             if (!isInitialized) initAudio();
             ensureAudioRunning();
             
-            const oscillator = audioContext.createOscillator();
+            const osc = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
             
-            oscillator.frequency.value = frequency;
-            oscillator.type = 'sine';
+            osc.frequency.value = frequency;
+            osc.type = 'sine';
             
-            oscillator.connect(gainNode);
+            osc.connect(gainNode);
             gainNode.connect(mainGain);
             
             const now = audioContext.currentTime;
-            const baseVoiceGain = 0.5; // 全体の標準をやや低めに
+            const baseVoiceGain = 0.4; // 全体の基準（ここから各音のgainで乗算）
             let targetGain = baseVoiceGain * gainFactor;
-            if (targetGain > 1.0) targetGain = 1.0; // 念のため上限
+            // ★クリップは一応 2.0 に制限（C4 などは1.2付近まで上がる）
+            if (targetGain > 2.0) targetGain = 2.0;
             
             gainNode.gain.setValueAtTime(0, now);
             gainNode.gain.linearRampToValueAtTime(targetGain, now + 0.03);
             
-            oscillator.start(now);
+            osc.start(now);
             
             const noteId = `${idTag}_${nextNoteId++}`;
-            activeVoices.set(noteId, {
-                oscillator: oscillator,
-                gainNode: gainNode
-            });
-            
+            activeVoices.set(noteId, { oscillator: osc, gainNode });
             return noteId;
         }
 
-        // 音を止める
         function noteOff(noteId) {
             if (!noteId || !activeVoices.has(noteId)) return;
-            
             const voice = activeVoices.get(noteId);
             const now = audioContext.currentTime;
-            
             voice.gainNode.gain.cancelScheduledValues(now);
             voice.gainNode.gain.setValueAtTime(voice.gainNode.gain.value, now);
             voice.gainNode.gain.linearRampToValueAtTime(0, now + 0.2);
-            
             voice.oscillator.stop(now + 0.25);
-            
             setTimeout(() => {
                 activeVoices.delete(noteId);
             }, 250);
         }
 
-        // UI生成
         function createUI() {
             const starButtonsContainer = document.getElementById('starButtons');
-            
             notes.forEach((n, index) => {
                 const star = document.createElement('div');
                 star.className = 'star-button';
@@ -324,19 +302,15 @@
                 star.dataset.freq = n.freq;
                 star.dataset.note = n.note;
                 star.dataset.key = n.key;
-                
                 star.innerHTML = `
                     ${n.note}
                     <span class="key-label">${n.key}</span>
                 `;
-                
                 starButtonsContainer.appendChild(star);
             });
         }
 
-        // イベントリスナー設定
         function setupEventListeners() {
-            // 星ボタン
             const stars = document.querySelectorAll('.star-button');
             stars.forEach(star => {
                 star.addEventListener('pointerdown', (e) => {
@@ -348,7 +322,6 @@
                     
                     const index = parseInt(star.dataset.index, 10);
                     const info = notes[index];
-                    
                     const freq = info.freq;
                     const gainFactor = info.gain ?? 1.0;
                     
@@ -380,33 +353,19 @@
                     voice.oscillator.frequency.setValueAtTime(newFreq, now);
                 });
                 
-                star.addEventListener('pointerup', (e) => {
-                    e.preventDefault();
+                function endNote() {
                     star.classList.remove('active');
                     if (star.dataset.noteId) {
                         noteOff(star.dataset.noteId);
                         delete star.dataset.noteId;
                     }
-                });
+                }
                 
-                star.addEventListener('pointerleave', () => {
-                    star.classList.remove('active');
-                    if (star.dataset.noteId) {
-                        noteOff(star.dataset.noteId);
-                        delete star.dataset.noteId;
-                    }
-                });
-                
-                star.addEventListener('pointercancel', () => {
-                    star.classList.remove('active');
-                    if (star.dataset.noteId) {
-                        noteOff(star.dataset.noteId);
-                        delete star.dataset.noteId;
-                    }
-                });
+                star.addEventListener('pointerup', (e) => { e.preventDefault(); endNote(); });
+                star.addEventListener('pointerleave', endNote);
+                star.addEventListener('pointercancel', endNote);
             });
             
-            // 太陽ボタン
             const sunButton = document.getElementById('sunButton');
             const volumeIndicator = document.getElementById('volumeIndicator');
             let isDragging = false;
@@ -428,38 +387,29 @@
             
             sunButton.addEventListener('pointermove', (e) => {
                 if (!isDragging) return;
-                
                 const deltaY = startY - e.clientY;
                 const volumeChange = deltaY / 200;
                 currentVolume = Math.max(0, Math.min(1, startVolume + volumeChange));
-                
                 if (mainGain) {
                     mainGain.gain.value = currentVolume;
                 }
-                
                 volumeIndicator.textContent = `Volume: ${Math.round(currentVolume * 100)}%`;
             });
             
-            sunButton.addEventListener('pointerup', () => {
+            function endVolumeDrag() {
                 isDragging = false;
                 sunButton.classList.remove('dragging');
                 setTimeout(() => {
                     volumeIndicator.classList.remove('visible');
                 }, 1000);
-            });
+            }
             
-            sunButton.addEventListener('pointercancel', () => {
-                isDragging = false;
-                sunButton.classList.remove('dragging');
-                volumeIndicator.classList.remove('visible');
-            });
+            sunButton.addEventListener('pointerup', endVolumeDrag);
+            sunButton.addEventListener('pointercancel', endVolumeDrag);
             
-            // キーボード対応
             const pressedKeys = new Map();
-            
             document.addEventListener('keydown', (e) => {
                 if (e.repeat) return;
-                
                 const key = e.key.toLowerCase();
                 if (!isInitialized) initAudio();
                 ensureAudioRunning();
@@ -468,7 +418,6 @@
                     e.preventDefault();
                     const index = keyIndexMap[key];
                     const info = notes[index];
-                    
                     const freq = info.freq;
                     const gainFactor = info.gain ?? 1.0;
                     
@@ -479,13 +428,12 @@
                     }
                     
                     const noteId = noteOn(freq, `key_${key}`, gainFactor);
-                    pressedKeys.set(key, { element: starElement, noteId: noteId });
+                    pressedKeys.set(key, { element: starElement, noteId });
                 }
             });
             
             document.addEventListener('keyup', (e) => {
                 const key = e.key.toLowerCase();
-                
                 if (pressedKeys.has(key)) {
                     const { element, noteId } = pressedKeys.get(key);
                     if (element) {
@@ -497,18 +445,15 @@
             });
         }
 
-        // 初期化
         document.addEventListener('DOMContentLoaded', () => {
             createUI();
             setupEventListeners();
-            
             document.addEventListener('pointerdown', () => {
                 initAudio();
                 ensureAudioRunning();
             }, { once: true });
         });
 
-        // タッチスクロール防止
         document.addEventListener('touchmove', (e) => {
             if (e.target.closest('.sun-button') || e.target.closest('.star-button')) {
                 e.preventDefault();
