@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>魔法の笛 - Magic Flute</title>
+    <title>魔法の笛 - Magic Flute (Chromatic + JSON Score)</title>
     <style>
         * {
             margin: 0;
@@ -33,11 +33,11 @@
             padding: 20px;
         }
 
-        /* 星型ボタン（メイン演奏用） */
+        /* 星型ボタン（メイン演奏用・半音込み16キー） */
         .star-buttons {
             position: absolute;
             left: 50%;
-            top: 50%;
+            top: 48%;
             transform: translate(-50%, -50%);
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -134,14 +134,76 @@
             opacity: 1;
         }
 
+        /* JSON 楽譜パネル */
+        .score-panel {
+            position: absolute;
+            left: 20px;
+            right: 20px;
+            bottom: 70px;
+            background: rgba(0, 0, 0, 0.45);
+            border-radius: 12px;
+            padding: 8px 10px;
+            color: #fff;
+            font-size: 11px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .score-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .score-panel-title {
+            font-weight: 600;
+            font-size: 11px;
+        }
+
+        .score-panel-buttons {
+            display: flex;
+            gap: 6px;
+        }
+
+        .score-button {
+            border: none;
+            border-radius: 999px;
+            padding: 4px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+        }
+
+        .score-button.playing {
+            background: rgba(76, 175, 80, 0.9);
+        }
+
+        .score-textarea {
+            width: 100%;
+            min-height: 80px;
+            max-height: 120px;
+            resize: vertical;
+            border-radius: 8px;
+            border: none;
+            padding: 6px;
+            font-size: 11px;
+            font-family: "Consolas", "SF Mono", monospace;
+            background: rgba(0, 0, 0, 0.55);
+            color: #e0e0e0;
+            outline: none;
+        }
+
         /* ヘルプテキスト */
         .help-text {
             position: absolute;
-            bottom: 10px;
+            bottom: 8px;
             left: 50%;
             transform: translateX(-50%);
             color: white;
-            font-size: 11px;
+            font-size: 10px;
             text-align: center;
             background: rgba(0, 0, 0, 0.5);
             padding: 5px 15px;
@@ -159,6 +221,10 @@
                 width: 70px;
                 height: 70px;
                 font-size: 12px;
+            }
+
+            .score-panel {
+                bottom: 68px;
             }
         }
 
@@ -181,13 +247,27 @@
         <div class="sun-button" id="sunButton"></div>
         <div class="volume-indicator" id="volumeIndicator">Volume: 50%</div>
 
-        <!-- 星型ボタン（16音・ドラッグでピッチ変更） -->
+        <!-- 星型ボタン（16音・半音込み） -->
         <div class="star-buttons" id="starButtons"></div>
+
+        <!-- JSON 楽譜パネル -->
+        <div class="score-panel">
+            <div class="score-panel-header">
+                <div class="score-panel-title">
+                    JSON Score (bpm / tracks / notes)
+                </div>
+                <div class="score-panel-buttons">
+                    <button class="score-button" id="scoreLoadSampleButton">Load Sample</button>
+                    <button class="score-button" id="scorePlayButton">Play Score</button>
+                </div>
+            </div>
+            <textarea id="scoreJson" class="score-textarea" spellcheck="false"></textarea>
+        </div>
 
         <!-- ヘルプテキスト -->
         <div class="help-text">
-            星16音（C4〜D6）: タップで演奏 / 上下ドラッグでピッチ変化 |
-            キー: 1–4, QWER, ASDF, ZXCV | 太陽:音量
+            星16音（C4〜D#5 / 半音あり）: タップで演奏 / 上下ドラッグでピッチ変化 |
+            キー: 1–4, QWER, ASDF, ZXCV | 太陽:音量 | Score: JSON 楽譜再生
         </div>
     </div>
 
@@ -199,34 +279,88 @@
         let nextNoteId = 0;
         let currentVolume = 0.5;
 
-        // ★ここが音量バランスの肝（C4〜B4をかなり持ち上げ、上は絞る）
-        const notes = [
-            { key: '1', note: 'C4', freq: 261.63, gain: 3.0 },
-            { key: '2', note: 'D4', freq: 293.66, gain: 2.7 },
-            { key: '3', note: 'E4', freq: 329.63, gain: 2.4 },
-            { key: '4', note: 'F4', freq: 349.23, gain: 2.1 },
+        // スコア再生用フラグ・タイマー
+        let isScorePlaying = false;
+        let scoreTimeouts = [];
 
-            { key: 'Q', note: 'G4', freq: 392.00, gain: 1.8 },
-            { key: 'W', note: 'A4', freq: 440.00, gain: 1.6 },
-            { key: 'E', note: 'B4', freq: 493.88, gain: 1.4 },
-            { key: 'R', note: 'C5', freq: 523.25, gain: 1.2 },
+        // ===============================
+        // 音名 → セント値（A4=0）変換用
+        // ===============================
+        const NOTE_TO_SEMITONE = {
+            'C': -9,
+            'C#': -8, 'Db': -8,
+            'D': -7,
+            'D#': -6, 'Eb': -6,
+            'E': -5,
+            'F': -4,
+            'F#': -3, 'Gb': -3,
+            'G': -2,
+            'G#': -1, 'Ab': -1,
+            'A': 0,
+            'A#': 1, 'Bb': 1,
+            'B': 2
+        };
 
-            { key: 'A', note: 'D5', freq: 587.33, gain: 1.0 },
-            { key: 'S', note: 'E5', freq: 659.25, gain: 0.9 },
-            { key: 'D', note: 'F5', freq: 698.46, gain: 0.8 },
+        function noteNameToFrequency(noteName) {
+            // 例: "C#4", "Db4", "A4"
+            const m = /^([A-G])([b#]?)(\d)$/.exec(noteName);
+            if (!m) return null;
+            const letter = m[1];
+            const accidental = m[2] || '';
+            const octave = parseInt(m[3], 10);
+            const key = letter + accidental;
+            if (!(key in NOTE_TO_SEMITONE)) return null;
+            const semitoneFromA4 = NOTE_TO_SEMITONE[key] + 12 * (octave - 4);
+            return 440 * Math.pow(2, semitoneFromA4 / 12);
+        }
 
-            { key: 'F', note: 'G5', freq: 783.99, gain: 0.5 },
-            { key: 'Z', note: 'A5', freq: 880.00,  gain: 0.4 },
-            { key: 'X', note: 'B5', freq: 987.77,  gain: 0.35 },
-            { key: 'C', note: 'C6', freq: 1046.50, gain: 0.32 },
-            { key: 'V', note: 'D6', freq: 1174.66, gain: 0.30 }
+        // 半音込み16キー設定（C4〜D#5）
+        const starConfig = [
+            { key: '1', note: 'C4',  gain: 1.6 },
+            { key: '2', note: 'C#4', gain: 1.6 },
+            { key: '3', note: 'D4',  gain: 1.5 },
+            { key: '4', note: 'D#4', gain: 1.5 },
+
+            { key: 'Q', note: 'E4',  gain: 1.4 },
+            { key: 'W', note: 'F4',  gain: 1.3 },
+            { key: 'E', note: 'F#4', gain: 1.2 },
+            { key: 'R', note: 'G4',  gain: 1.1 },
+
+            { key: 'A', note: 'G#4', gain: 1.0 },
+            { key: 'S', note: 'A4',  gain: 0.9 },
+            { key: 'D', note: 'A#4', gain: 0.9 },
+            { key: 'F', note: 'B4',  gain: 0.8 },
+
+            { key: 'Z', note: 'C5',  gain: 0.8 },
+            { key: 'X', note: 'C#5', gain: 0.8 },
+            { key: 'C', note: 'D5',  gain: 0.75 },
+            { key: 'V', note: 'D#5', gain: 0.75 }
         ];
 
-        const keyIndexMap = {};
-        notes.forEach((n, idx) => {
-            keyIndexMap[n.key.toLowerCase()] = idx;
+        // freq を追加
+        starConfig.forEach(cfg => {
+            cfg.freq = noteNameToFrequency(cfg.note);
         });
 
+        // キー → インデックス、音名 → インデックス のマップ
+        const keyIndexMap = {};
+        const noteNameToStarIndex = {};
+        starConfig.forEach((cfg, idx) => {
+            keyIndexMap[cfg.key.toLowerCase()] = idx;
+            noteNameToStarIndex[cfg.note] = idx;
+        });
+
+        function getGainForNoteName(noteName) {
+            const idx = noteNameToStarIndex[noteName];
+            if (idx != null) {
+                return starConfig[idx].gain ?? 1.0;
+            }
+            return 1.0;
+        }
+
+        // ===============================
+        // Audio 初期化
+        // ===============================
         function initAudio() {
             if (isInitialized && audioContext) {
                 if (audioContext.state === 'suspended') {
@@ -265,9 +399,8 @@
             gainNode.connect(mainGain);
             
             const now = audioContext.currentTime;
-            const baseVoiceGain = 0.4; // 全体の基準（ここから各音のgainで乗算）
+            const baseVoiceGain = 0.4; // 全体の基準
             let targetGain = baseVoiceGain * gainFactor;
-            // ★クリップは一応 2.0 に制限（C4 などは1.2付近まで上がる）
             if (targetGain > 2.0) targetGain = 2.0;
             
             gainNode.gain.setValueAtTime(0, now);
@@ -293,21 +426,174 @@
             }, 250);
         }
 
+        // ===============================
+        // UI 作成
+        // ===============================
         function createUI() {
             const starButtonsContainer = document.getElementById('starButtons');
-            notes.forEach((n, index) => {
+            starConfig.forEach((cfg, index) => {
                 const star = document.createElement('div');
                 star.className = 'star-button';
                 star.dataset.index = index;
-                star.dataset.freq = n.freq;
-                star.dataset.note = n.note;
-                star.dataset.key = n.key;
+                star.dataset.freq = cfg.freq;
+                star.dataset.note = cfg.note;
+                star.dataset.key = cfg.key;
                 star.innerHTML = `
-                    ${n.note}
-                    <span class="key-label">${n.key}</span>
+                    ${cfg.note}
+                    <span class="key-label">${cfg.key}</span>
                 `;
                 starButtonsContainer.appendChild(star);
             });
+
+            // スコアテキストエリアにサンプルJSONセット
+            const sampleJson = {
+                "title": "Sample Scale",
+                "bpm": 96,
+                "timeSignature": "4/4",
+                "tracks": [
+                    {
+                        "id": "melody",
+                        "notes": [
+                            { "t": 0, "dur": 1, "pitches": ["C4"] },
+                            { "t": 1, "dur": 1, "pitches": ["D4"] },
+                            { "t": 2, "dur": 1, "pitches": ["E4"] },
+                            { "t": 3, "dur": 1, "pitches": ["F4"] },
+                            { "t": 4, "dur": 1, "pitches": ["G4"] },
+                            { "t": 5, "dur": 1, "pitches": ["A4"] },
+                            { "t": 6, "dur": 1, "pitches": ["B4"] },
+                            { "t": 7, "dur": 2, "pitches": ["C5"] }
+                        ]
+                    }
+                ]
+            };
+            const scoreTextarea = document.getElementById('scoreJson');
+            scoreTextarea.value = JSON.stringify(sampleJson, null, 2);
+        }
+
+        // ===============================
+        // スコア再生機能（JSON）
+        // ===============================
+        function stopScorePlayback() {
+            isScorePlaying = false;
+            scoreTimeouts.forEach(id => clearTimeout(id));
+            scoreTimeouts = [];
+
+            // スコア由来の音を止める
+            for (const [id, voice] of activeVoices.entries()) {
+                if (id.startsWith('score_')) {
+                    noteOff(id);
+                }
+            }
+
+            // 星のハイライト解除
+            const stars = document.querySelectorAll('.star-button');
+            stars.forEach(star => star.classList.remove('active'));
+
+            const btn = document.getElementById('scorePlayButton');
+            if (btn) {
+                btn.textContent = 'Play Score';
+                btn.classList.remove('playing');
+            }
+        }
+
+        function playScoreFromJsonTextarea() {
+            initAudio();
+            ensureAudioRunning();
+
+            if (isScorePlaying) {
+                // 再生中なら停止
+                stopScorePlayback();
+                return;
+            }
+
+            const textarea = document.getElementById('scoreJson');
+            let data;
+            try {
+                data = JSON.parse(textarea.value);
+            } catch (e) {
+                alert('JSON のパースに失敗しました。\n' + e.message);
+                return;
+            }
+
+            const bpm = data.bpm || 100;
+            const beatDurationSec = 60 / bpm;
+            const tracks = Array.isArray(data.tracks) ? data.tracks : [];
+            if (!tracks.length || !Array.isArray(tracks[0].notes)) {
+                alert('tracks[0].notes が見つかりません。');
+                return;
+            }
+
+            const notes = tracks[0].notes;
+            if (!notes.length) {
+                alert('ノートがありません。');
+                return;
+            }
+
+            isScorePlaying = true;
+            const btn = document.getElementById('scorePlayButton');
+            if (btn) {
+                btn.textContent = 'Stop Score';
+                btn.classList.add('playing');
+            }
+
+            const starsList = document.querySelectorAll('.star-button');
+            scoreTimeouts = [];
+
+            // 各ノートをスケジューリング
+            notes.forEach((ev, idx) => {
+                const tBeats = typeof ev.t === 'number' ? ev.t : 0;
+                const durBeats = typeof ev.dur === 'number' ? ev.dur : 1;
+                const startMs = tBeats * beatDurationSec * 1000;
+                const durMs = durBeats * beatDurationSec * 1000;
+                const pitches = Array.isArray(ev.pitches)
+                    ? ev.pitches
+                    : (ev.note ? [ev.note] : []);
+
+                const startId = setTimeout(() => {
+                    if (!isScorePlaying) return;
+
+                    const noteIds = [];
+                    const highlightedStars = [];
+
+                    pitches.forEach(pName => {
+                        const freq = noteNameToFrequency(pName);
+                        if (!freq) return;
+
+                        const starIndex = noteNameToStarIndex[pName];
+                        if (starIndex != null) {
+                            const st = starsList[starIndex];
+                            if (st) {
+                                st.classList.add('active');
+                                highlightedStars.push(st);
+                            }
+                        }
+
+                        const gainFactor = getGainForNoteName(pName);
+                        const nid = noteOn(freq, `score_${idx}_${pName}`, gainFactor);
+                        noteIds.push(nid);
+                    });
+
+                    const stopId = setTimeout(() => {
+                        highlightedStars.forEach(st => st.classList.remove('active'));
+                        noteIds.forEach(nid => noteOff(nid));
+                    }, durMs * 0.95);
+
+                    scoreTimeouts.push(stopId);
+                }, startMs);
+
+                scoreTimeouts.push(startId);
+            });
+
+            // 全体長を計算して最後に停止
+            const totalBeats = notes.reduce((max, ev) => {
+                const t = typeof ev.t === 'number' ? ev.t : 0;
+                const d = typeof ev.dur === 'number' ? ev.dur : 1;
+                return Math.max(max, t + d);
+            }, 0);
+            const endId = setTimeout(() => {
+                stopScorePlayback();
+            }, totalBeats * beatDurationSec * 1000 + 250);
+            scoreTimeouts.push(endId);
         }
 
         function setupEventListeners() {
@@ -321,9 +607,9 @@
                     star.classList.add('active');
                     
                     const index = parseInt(star.dataset.index, 10);
-                    const info = notes[index];
-                    const freq = info.freq;
-                    const gainFactor = info.gain ?? 1.0;
+                    const cfg = starConfig[index];
+                    const freq = cfg.freq;
+                    const gainFactor = cfg.gain ?? 1.0;
                     
                     const noteId = noteOn(freq, `star_${index}`, gainFactor);
                     star.dataset.noteId = noteId;
@@ -407,6 +693,7 @@
             sunButton.addEventListener('pointerup', endVolumeDrag);
             sunButton.addEventListener('pointercancel', endVolumeDrag);
             
+            // キーボード演奏
             const pressedKeys = new Map();
             document.addEventListener('keydown', (e) => {
                 if (e.repeat) return;
@@ -417,9 +704,9 @@
                 if (keyIndexMap.hasOwnProperty(key)) {
                     e.preventDefault();
                     const index = keyIndexMap[key];
-                    const info = notes[index];
-                    const freq = info.freq;
-                    const gainFactor = info.gain ?? 1.0;
+                    const cfg = starConfig[index];
+                    const freq = cfg.freq;
+                    const gainFactor = cfg.gain ?? 1.0;
                     
                     const starsList = document.querySelectorAll('.star-button');
                     const starElement = starsList[index];
@@ -442,6 +729,39 @@
                     noteOff(noteId);
                     pressedKeys.delete(key);
                 }
+            });
+
+            // スコアボタン
+            const scorePlayButton = document.getElementById('scorePlayButton');
+            scorePlayButton.addEventListener('click', () => {
+                playScoreFromJsonTextarea();
+            });
+
+            const scoreLoadSampleButton = document.getElementById('scoreLoadSampleButton');
+            scoreLoadSampleButton.addEventListener('click', () => {
+                // 初期サンプルをもう一度上書きしたいとき用
+                const sampleJson = {
+                    "title": "Sample Scale",
+                    "bpm": 96,
+                    "timeSignature": "4/4",
+                    "tracks": [
+                        {
+                            "id": "melody",
+                            "notes": [
+                                { "t": 0, "dur": 1, "pitches": ["C4"] },
+                                { "t": 1, "dur": 1, "pitches": ["D4"] },
+                                { "t": 2, "dur": 1, "pitches": ["E4"] },
+                                { "t": 3, "dur": 1, "pitches": ["F4"] },
+                                { "t": 4, "dur": 1, "pitches": ["G4"] },
+                                { "t": 5, "dur": 1, "pitches": ["A4"] },
+                                { "t": 6, "dur": 1, "pitches": ["B4"] },
+                                { "t": 7, "dur": 2, "pitches": ["C5"] }
+                            ]
+                        }
+                    ]
+                };
+                const scoreTextarea = document.getElementById('scoreJson');
+                scoreTextarea.value = JSON.stringify(sampleJson, null, 2);
             });
         }
 
