@@ -3,7 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>魔法の笛 - Magic Flute (Chromatic + JSON Score)</title>
+    <title>魔法の笛 - Magic Flute (Chromatic + JSON Score + MusicXML)</title>
+
+    <!-- OSMD (MusicXML ビューア) -->
+    <script src="https://unpkg.com/opensheetmusicdisplay/build/opensheetmusicdisplay.min.js"></script>
+
     <style>
         * {
             margin: 0;
@@ -31,6 +35,58 @@
             height: 100vh;
             position: relative;
             padding: 20px;
+        }
+
+        /* OSMD パネル（MusicXML 読み込み＋表示） */
+        .osmd-panel {
+            position: absolute;
+            left: 20px;
+            right: 20px;
+            top: 110px; /* 太陽ボタンより下に配置 */
+            height: 150px;
+            background: rgba(255, 255, 255, 0.92);
+            border-radius: 10px;
+            padding: 6px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            overflow: hidden;
+        }
+
+        .osmd-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+        }
+
+        .osmd-controls label {
+            font-weight: 600;
+        }
+
+        .xml-file-input {
+            font-size: 10px;
+            max-width: 55%;
+        }
+
+        .xml-button {
+            border: none;
+            border-radius: 999px;
+            padding: 4px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            background: rgba(102, 126, 234, 0.9);
+            color: #fff;
+        }
+
+        .xml-button.playing {
+            background: rgba(76, 175, 80, 0.9);
+        }
+
+        .osmd-container {
+            flex: 1;
+            overflow: auto;
         }
 
         /* 星型ボタン（メイン演奏用・半音込み16キー） */
@@ -104,7 +160,7 @@
             justify-content: center;
             font-size: 40px;
             touch-action: none;
-            position: relative;
+            position: absolute;
         }
 
         .sun-button::before {
@@ -247,6 +303,16 @@
         <div class="sun-button" id="sunButton"></div>
         <div class="volume-indicator" id="volumeIndicator">Volume: 50%</div>
 
+        <!-- OSMD パネル（MusicXML 読み込み＋表示＋自動演奏） -->
+        <div class="osmd-panel">
+            <div class="osmd-controls">
+                <label for="xmlFileInput">MusicXML:</label>
+                <input type="file" id="xmlFileInput" class="xml-file-input" accept=".xml,.musicxml,.mxl">
+                <button id="xmlPlayButton" class="xml-button">Play XML</button>
+            </div>
+            <div id="osmdContainer" class="osmd-container"></div>
+        </div>
+
         <!-- 星型ボタン（16音・半音込み） -->
         <div class="star-buttons" id="starButtons"></div>
 
@@ -267,7 +333,8 @@
         <!-- ヘルプテキスト -->
         <div class="help-text">
             星16音（C4〜D#5 / 半音あり）: タップで演奏 / 上下ドラッグでピッチ変化 |
-            キー: 1–4, QWER, ASDF, ZXCV | 太陽:音量 | Score: JSON 楽譜再生
+            キー: 1–4, QWER, ASDF, ZXCV | 太陽:音量 |
+            JSON: Score 再生 | MusicXML: ファイル読み込み → Play XML
         </div>
     </div>
 
@@ -279,9 +346,15 @@
         let nextNoteId = 0;
         let currentVolume = 0.5;
 
-        // スコア再生用フラグ・タイマー
+        // スコア再生用フラグ・タイマー（JSON用）
         let isScorePlaying = false;
         let scoreTimeouts = [];
+
+        // OSMD 関連
+        let osmd = null;
+        let osmdNoteSequence = [];  // {isRest, halftone, durSec}
+        let isXmlPlaying = false;
+        let xmlStopRequested = false;
 
         // ===============================
         // 音名 → セント値（A4=0）変換用
@@ -302,7 +375,6 @@
         };
 
         function noteNameToFrequency(noteName) {
-            // 例: "C#4", "Db4", "A4"
             const m = /^([A-G])([b#]?)(\d)$/.exec(noteName);
             if (!m) return null;
             const letter = m[1];
@@ -312,6 +384,11 @@
             if (!(key in NOTE_TO_SEMITONE)) return null;
             const semitoneFromA4 = NOTE_TO_SEMITONE[key] + 12 * (octave - 4);
             return 440 * Math.pow(2, semitoneFromA4 / 12);
+        }
+
+        // OSMD の halfTone（+12補正） → 周波数
+        function midiToFrequency(midi) {
+            return 440 * Math.pow(2, (midi - 69) / 12);
         }
 
         // 半音込み16キー設定（C4〜D#5）
@@ -596,6 +673,134 @@
             scoreTimeouts.push(endId);
         }
 
+        // ===============================
+        // OSMD: MusicXML 読み込み & ノート抽出
+        // ===============================
+        function initOsmd() {
+            if (osmd) return;
+            osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay("osmdContainer", {
+                autoResize: true,
+                drawTitle: true
+            });
+        }
+
+        function buildOsmdNoteSequence() {
+            osmdNoteSequence = [];
+            if (!osmd || !osmd.cursor) return;
+
+            osmd.cursor.show();
+            osmd.cursor.reset();
+
+            const iterator = osmd.cursor.Iterator || osmd.cursor.iterator;
+            if (!iterator) return;
+
+            const maxSteps = 1e6;
+            let steps = 0;
+
+            while (!iterator.EndReached && steps < maxSteps) {
+                const measure = iterator.CurrentMeasure;
+                const bpm = (iterator.CurrentBpm || (measure && measure.TempoInBPM)) || 80;
+                const quarterSec = 60 / bpm; // 四分音符の秒数
+
+                const voices = iterator.CurrentVoiceEntries;
+                for (const ve of voices) {
+                    const notes = ve.Notes;
+                    for (const note of notes) {
+                        const lengthReal = note.Length.RealValue; // whole=1, quarter=0.25
+                        const beats = lengthReal * 4;             // 四分音符換算の拍数
+                        const durSec = beats * quarterSec;
+
+                        const isRest = note.isRest();
+                        const halftone = note.halfTone + 12; // OSMD 推奨補正
+
+                        osmdNoteSequence.push({
+                            isRest,
+                            halftone,
+                            durSec
+                        });
+                    }
+                }
+
+                iterator.moveToNext();
+                steps++;
+            }
+
+            osmd.cursor.hide();
+        }
+
+        async function loadMusicXmlFromFile(file) {
+            const text = await file.text();
+            initOsmd();
+            try {
+                await osmd.load(text);
+                osmd.render();
+                buildOsmdNoteSequence();
+                if (!osmdNoteSequence.length) {
+                    alert("楽譜は読み込まれましたが、演奏できる音符が見つかりませんでした。");
+                }
+            } catch (err) {
+                console.error(err);
+                alert("MusicXML の読み込みに失敗しました。\n" + err);
+            }
+        }
+
+        // ===============================
+        // OSMD: 自動演奏
+        // ===============================
+        async function playOsmdSequence() {
+            if (!osmdNoteSequence.length) {
+                alert("MusicXML から音符がまだ読み込まれていません。ファイルを読み込んでください。");
+                return;
+            }
+
+            initAudio();
+            ensureAudioRunning();
+
+            const btn = document.getElementById('xmlPlayButton');
+
+            if (isXmlPlaying) {
+                // すでに再生中 → 停止要求
+                xmlStopRequested = true;
+                return;
+            }
+
+            isXmlPlaying = true;
+            xmlStopRequested = false;
+            if (btn) {
+                btn.textContent = "Stop XML";
+                btn.classList.add("playing");
+            }
+
+            // シンプルに「順番通りに一音ずつ」再生（単声メロディ想定）
+            for (let i = 0; i < osmdNoteSequence.length; i++) {
+                if (xmlStopRequested) break;
+                const ev = osmdNoteSequence[i];
+                const durMs = ev.durSec * 1000;
+
+                if (!ev.isRest) {
+                    const freq = midiToFrequency(ev.halftone);
+                    const gainFactor = 1.0;
+                    const noteId = noteOn(freq, `xml_${i}`, gainFactor);
+
+                    await new Promise(r => setTimeout(r, durMs * 0.9));
+                    noteOff(noteId);
+                    await new Promise(r => setTimeout(r, durMs * 0.1));
+                } else {
+                    await new Promise(r => setTimeout(r, durMs));
+                }
+            }
+
+            isXmlPlaying = false;
+            xmlStopRequested = false;
+            if (btn) {
+                btn.textContent = "Play XML";
+                btn.classList.remove("playing");
+            }
+        }
+
+        // ===============================
+        // イベントリスナー
+        // ===============================
         function setupEventListeners() {
             const stars = document.querySelectorAll('.star-button');
             stars.forEach(star => {
@@ -731,7 +936,7 @@
                 }
             });
 
-            // スコアボタン
+            // スコアボタン（JSON）
             const scorePlayButton = document.getElementById('scorePlayButton');
             scorePlayButton.addEventListener('click', () => {
                 playScoreFromJsonTextarea();
@@ -739,7 +944,6 @@
 
             const scoreLoadSampleButton = document.getElementById('scoreLoadSampleButton');
             scoreLoadSampleButton.addEventListener('click', () => {
-                // 初期サンプルをもう一度上書きしたいとき用
                 const sampleJson = {
                     "title": "Sample Scale",
                     "bpm": 96,
@@ -762,6 +966,20 @@
                 };
                 const scoreTextarea = document.getElementById('scoreJson');
                 scoreTextarea.value = JSON.stringify(sampleJson, null, 2);
+            });
+
+            // MusicXML ファイル読み込み
+            const xmlFileInput = document.getElementById('xmlFileInput');
+            xmlFileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                await loadMusicXmlFromFile(file);
+            });
+
+            // MusicXML 自動演奏ボタン
+            const xmlPlayButton = document.getElementById('xmlPlayButton');
+            xmlPlayButton.addEventListener('click', () => {
+                playOsmdSequence();
             });
         }
 
